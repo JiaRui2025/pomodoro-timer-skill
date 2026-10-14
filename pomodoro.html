@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>番茄钟 · Pomodoro</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, "SF Pro Display", "Noto Sans SC", "Helvetica Neue", sans-serif;
+      background: #faf6f0;
+      color: #2d2d2d;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.6s ease;
+    }
+
+    /* ---------- 卡片 ---------- */
+    .card {
+      background: #ffffff;
+      border-radius: 24px;
+      padding: 48px 56px 40px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.07), 0 2px 8px rgba(0,0,0,0.04);
+      text-align: center;
+      width: min(420px, 92vw);
+    }
+
+    /* ---------- 标题 ---------- */
+    .title {
+      font-size: 14px;
+      letter-spacing: 3px;
+      color: #b0a89f;
+      text-transform: uppercase;
+      margin-bottom: 36px;
+    }
+    .title .tomato { font-size: 18px; }
+
+    /* ---------- 进度环 + 时间 ---------- */
+    .timer-area {
+      position: relative;
+      width: 280px;
+      height: 280px;
+      margin: 0 auto 36px;
+    }
+    .progress-ring {
+      transform: rotate(-90deg);
+      width: 280px;
+      height: 280px;
+    }
+    .progress-ring__bg {
+      fill: none;
+      stroke: #f0ebe3;
+      stroke-width: 8;
+    }
+    .progress-ring__fg {
+      fill: none;
+      stroke: #e8554e;
+      stroke-width: 8;
+      stroke-linecap: round;
+      transition: stroke-dashoffset 0.3s ease, stroke 0.6s ease;
+    }
+    .time-display {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 64px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -1px;
+      line-height: 1;
+    }
+    .time-label {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, 52px);
+      font-size: 13px;
+      color: #b0a89f;
+      letter-spacing: 1px;
+      white-space: nowrap;
+    }
+
+    /* ---------- 按钮 ---------- */
+    .btn-row {
+      display: flex;
+      gap: 14px;
+      justify-content: center;
+      margin-bottom: 28px;
+    }
+    .btn {
+      border: none;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      padding: 14px 0;
+      font-family: inherit;
+    }
+    .btn-primary {
+      background: #e8554e;
+      color: #fff;
+      width: 160px;
+      box-shadow: 0 4px 16px rgba(232,85,78,0.32);
+    }
+    .btn-primary:hover { background: #d94942; transform: translateY(-1px); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-secondary {
+      background: #f5f1ea;
+      color: #8a8078;
+      width: 110px;
+    }
+    .btn-secondary:hover { background: #ede8e0; color: #6b6258; }
+
+    /* ---------- 背景音选择 ---------- */
+    .sound-section {
+      padding-top: 24px;
+      border-top: 1px solid #f0ebe3;
+    }
+    .sound-header {
+      display: flex; align-items: center; justify-content: center;
+      gap: 8px; margin-bottom: 12px;
+    }
+    .sound-icon { font-size: 18px; }
+    .sound-label { font-size: 13px; color: #8a8078; }
+    .sound-options {
+      display: flex; border-radius: 12px; overflow: hidden;
+      border: 1px solid #ede8e0;
+    }
+    .sound-opt {
+      flex: 1; border: none; background: #fff;
+      font-size: 13px; color: #8a8078; padding: 10px 0;
+      cursor: pointer; font-family: inherit;
+      transition: all 0.2s ease;
+      border-right: 1px solid #ede8e0;
+    }
+    .sound-opt:last-child { border-right: none; }
+    .sound-opt:hover { background: #faf8f5; }
+    .sound-opt.active {
+      background: #e8554e; color: #fff; font-weight: 600;
+    }
+
+    /* ---------- 可视化 ---------- */
+    .visualizer {
+      width: 100%; height: 56px; margin-top: 12px;
+      border-radius: 8px; background: #faf8f5;
+      display: none;
+    }
+    .visualizer.show { display: block; }
+
+    /* ---------- 番茄计数 ---------- */
+    .session-count {
+      margin-top: 18px;
+      font-size: 13px;
+      color: #c0b8ae;
+    }
+    .session-count .num { color: #e8554e; font-weight: 700; }
+
+    /* ---------- 完成态 ---------- */
+    body.done { background: #f0f5ee; }
+    body.done .progress-ring__fg { stroke: #6baf5e; }
+    body.done .btn-primary { background: #6baf5e; box-shadow: 0 4px 16px rgba(107,175,94,0.32); }
+    body.done .btn-primary:hover { background: #5da050; }
+    body.done .sound-opt.active { background: #6baf5e; }
+
+    /* ---------- 弹窗 ---------- */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    .modal-overlay.show { opacity: 1; pointer-events: auto; }
+    .modal-card {
+      background: #fff;
+      border-radius: 20px;
+      padding: 40px 36px 32px;
+      width: min(360px, 90vw);
+      text-align: center;
+      transform: translateY(24px) scale(0.96);
+      transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+    }
+    .modal-overlay.show .modal-card { transform: translateY(0) scale(1); }
+    .modal-icon { font-size: 48px; margin-bottom: 12px; }
+    .modal-title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+    .modal-question { font-size: 16px; color: #6b6258; margin-bottom: 4px; }
+    .modal-duration { font-size: 14px; color: #c0b8ae; margin-bottom: 28px; }
+    .modal-btns { display: flex; gap: 12px; }
+    .modal-btn {
+      flex: 1; border: none; border-radius: 12px; font-size: 15px;
+      font-weight: 600; cursor: pointer; padding: 13px 0; font-family: inherit;
+      transition: all 0.2s ease;
+    }
+    .modal-btn-yes {
+      background: #6baf5e; color: #fff;
+      box-shadow: 0 3px 12px rgba(107,175,94,0.3);
+    }
+    .modal-btn-yes:hover { background: #5da050; transform: translateY(-1px); }
+    .modal-btn-no { background: #f5f1ea; color: #8a8078; }
+    .modal-btn-no:hover { background: #ede8e0; }
+
+    /* ---------- 今日统计 ---------- */
+    .stats-row {
+      display: flex; gap: 28px; justify-content: center;
+      margin-top: 16px; padding-top: 18px;
+      border-top: 1px solid #f0ebe3;
+    }
+    .stat-item { text-align: center; }
+    .stat-value {
+      font-size: 20px; font-weight: 700; color: #2d2d2d;
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-label { font-size: 11px; color: #b0a89f; margin-top: 3px; }
+
+    /* ---------- 专注记录列表 ---------- */
+    .log-toggle {
+      margin-top: 14px; font-size: 12px; color: #c0b8ae;
+      cursor: pointer; user-select: none; transition: color 0.2s;
+    }
+    .log-toggle:hover { color: #8a8078; }
+    .log-list {
+      margin-top: 8px; max-height: 0; overflow: hidden;
+      transition: max-height 0.35s ease;
+    }
+    .log-list.open { max-height: 320px; overflow-y: auto; }
+    .log-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px; font-size: 13px; color: #8a8078;
+      border-radius: 8px; text-align: left;
+    }
+    .log-item:nth-child(even) { background: #faf8f5; }
+    .log-item .log-time { flex: 1; }
+    .log-item .log-dur { font-weight: 600; color: #6b6258; }
+    .log-item .log-status { font-size: 15px; }
+
+    /* ---------- 响应式 ---------- */
+    @media (max-width: 480px) {
+      .card { padding: 36px 24px 28px; }
+      .timer-area { width: 240px; height: 240px; }
+      .progress-ring { width: 240px; height: 240px; }
+      .time-display { font-size: 52px; }
+      .btn-primary { width: 140px; }
+      .btn-secondary { width: 96px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="title"><span class="tomato">🍅</span>&nbsp;&nbsp;POMODORO</div>
+
+    <div class="timer-area">
+      <svg class="progress-ring" viewBox="0 0 280 280">
+        <circle class="progress-ring__bg" cx="140" cy="140" r="128"/>
+        <circle class="progress-ring__fg" cx="140" cy="140" r="128"
+                id="progressFg"
+                stroke-dasharray="804.25"
+                stroke-dashoffset="0"/>
+      </svg>
+      <div class="time-display" id="timeDisplay">25:00</div>
+      <div class="time-label" id="timeLabel">点击开始专注</div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="startBtn">开始</button>
+      <button class="btn btn-secondary" id="resetBtn">重置</button>
+    </div>
+
+    <div class="sound-section">
+      <div class="sound-header">
+        <span class="sound-icon">🎵</span>
+        <span class="sound-label">背景音</span>
+      </div>
+      <div class="sound-options" id="soundOptions">
+        <button class="sound-opt active" data-mode="off">关闭</button>
+        <button class="sound-opt" data-mode="music">🎶 轻音乐</button>
+      </div>
+      <canvas class="visualizer" id="visualizer" width="308" height="56"></canvas>
+    </div>
+
+    <div class="session-count">今日 <span class="num" id="sessionCount">0</span> 个番茄</div>
+
+    <div class="stats-row">
+      <div class="stat-item">
+        <div class="stat-value" id="statTotal">0min</div>
+        <div class="stat-label">专注时长</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="statDone">0</div>
+        <div class="stat-label">已完成</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="statIncomplete">0</div>
+        <div class="stat-label">未完成</div>
+      </div>
+    </div>
+
+    <div class="log-toggle" id="logToggle">查看专注记录 ▾</div>
+    <div class="log-list" id="logList"></div>
+  </div>
+
+  <!-- 完成弹窗 -->
+  <div class="modal-overlay" id="modal">
+    <div class="modal-card">
+      <div class="modal-icon">🔔</div>
+      <div class="modal-title">时间到！</div>
+      <div class="modal-question">这件事完成了吗？</div>
+      <div class="modal-duration" id="modalDuration">本次专注 25 分钟</div>
+      <div class="modal-btns">
+        <button class="modal-btn modal-btn-no" id="modalNo">还没 ⏳</button>
+        <button class="modal-btn modal-btn-yes" id="modalYes">完成了 ✅</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ============ 常量 ============ */
+  const TOTAL_SECONDS = 25 * 60;
+  const RING_CIRC = 2 * Math.PI * 128; // ≈ 804.25
+
+  /* ============ DOM ============ */
+  const elTime      = document.getElementById("timeDisplay");
+  const elLabel     = document.getElementById("timeLabel");
+  const elStart     = document.getElementById("startBtn");
+  const elReset     = document.getElementById("resetBtn");
+  const elRing      = document.getElementById("progressFg");
+  const elSoundOpts = document.getElementById("soundOptions");
+  const elViz       = document.getElementById("visualizer");
+  const elCount     = document.getElementById("sessionCount");
+  const elModal     = document.getElementById("modal");
+  const elModalDur  = document.getElementById("modalDuration");
+  const elModalYes  = document.getElementById("modalYes");
+  const elModalNo   = document.getElementById("modalNo");
+  const elStatTotal     = document.getElementById("statTotal");
+  const elStatDone      = document.getElementById("statDone");
+  const elStatIncomplete= document.getElementById("statIncomplete");
+  const elLogToggle     = document.getElementById("logToggle");
+  const elLogList       = document.getElementById("logList");
+
+  /* ============ 状态 ============ */
+  let remaining   = TOTAL_SECONDS;   // 剩余秒数
+  let running     = false;           // 是否倒计时中
+  let rafId       = null;            // requestAnimationFrame id
+  let pauseStamp = 0;               // 暂停时刻的 remaining
+  let startEpoch  = 0;               // 本次启动时间戳
+  let sessions    = 0;               // 今日完成次数
+  let sessionStartISO = null;        // 本轮专注开始时间（ISO）
+  let soundMode  = "off";            // "off" | "music"
+  let musicNodes = null;             // 轻音乐节点
+  let vizRaf     = null;             // 可视化 rAF id
+  let audioCtx    = null;
+
+  /* ============ Web Audio ============ */
+  function ensureAudioCtx() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AC();
+    }
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }
+
+  /* ============ Web Audio: 轻音乐 + 白噪声 ============ */
+  function startLightMusic() {
+    const ctx = ensureAudioCtx();
+
+    // --- 分析器（可视化用）---
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 128;
+    analyser.smoothingTimeConstant = 0.78;
+    const master = ctx.createGain();
+    master.gain.value = 1;
+    master.connect(analyser);
+    analyser.connect(ctx.destination);
+
+    // --- 白噪声（纯白噪声，高频更丰富）---
+    const sr = ctx.sampleRate;
+    const bufSize = sr * 2;
+    const buf = ctx.createBuffer(2, bufSize, sr);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch);
+      for (let i = 0; i < bufSize; i++) {
+        d[i] = (Math.random() * 2 - 1) * 0.5;
+      }
+    }
+    const noiseSrc = ctx.createBufferSource();
+    noiseSrc.buffer = buf;
+    noiseSrc.loop = true;
+
+    // 低通柔化白噪声
+    const noiseLP = ctx.createBiquadFilter();
+    noiseLP.type = "lowpass";
+    noiseLP.frequency.value = 3500;
+
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.value = 0;
+    noiseGain.gain.linearRampToValueAtTime(0.05, ctx.currentTime + 2); // 淡入
+
+    noiseSrc.connect(noiseLP);
+    noiseLP.connect(noiseGain);
+    noiseGain.connect(master);
+    noiseSrc.start();
+
+    // --- 延迟混响（给音符空间感）---
+    const delay = ctx.createDelay(1.0);
+    delay.delayTime.value = 0.38;
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.4;
+    const delayMix = ctx.createGain();
+    delayMix.gain.value = 0.35;
+    delay.connect(feedback);
+    feedback.connect(delay);
+    delay.connect(delayMix);
+    delayMix.connect(master);
+
+    // --- 五声音阶音符调度器 ---
+    const scale = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33, 659.25];
+    let schedulerTimer = null;
+    let activeOscs = []; // 跟踪正在播放的振荡器
+
+    function playNote() {
+      if (!musicNodes) return; // 已停止
+      const now = ctx.currentTime;
+      const idx = Math.floor(Math.random() * scale.length);
+      const freq = scale[idx];
+
+      // 主音 + 轻微失谐叠加（温暖感）
+      const osc1 = ctx.createOscillator();
+      osc1.type = "sine";
+      osc1.frequency.value = freq;
+
+      const osc2 = ctx.createOscillator();
+      osc2.type = "triangle";
+      osc2.frequency.value = freq;
+      osc2.detune.value = 6;
+
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, now);
+      g.gain.linearRampToValueAtTime(0.12, now + 0.8);  // 缓慢起音
+      g.gain.setValueAtTime(0.12, now + 1.8);           // 保持
+      g.gain.linearRampToValueAtTime(0, now + 4.5);     // 长释放
+
+      osc1.connect(g);
+      osc2.connect(g);
+      g.connect(master);
+      g.connect(delay);
+
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 4.6);
+      osc2.stop(now + 4.6);
+      activeOscs.push(osc1, osc2);
+
+      // 40% 概率叠加一个和声（上方三度或五度）
+      if (Math.random() < 0.4 && idx + 2 < scale.length) {
+        const hFreq = scale[idx + 2];
+        const hOsc = ctx.createOscillator();
+        hOsc.type = "sine";
+        hOsc.frequency.value = hFreq;
+
+        const hGain = ctx.createGain();
+        hGain.gain.setValueAtTime(0, now + 0.4);
+        hGain.gain.linearRampToValueAtTime(0.07, now + 1.2);
+        hGain.gain.linearRampToValueAtTime(0, now + 3.8);
+
+        hOsc.connect(hGain);
+        hGain.connect(master);
+        hGain.connect(delay);
+
+        hOsc.start(now + 0.4);
+        hOsc.stop(now + 3.9);
+        activeOscs.push(hOsc);
+      }
+
+      // 下一个音符 2~4.5 秒后
+      const nextDelay = 2000 + Math.random() * 2500;
+      schedulerTimer = setTimeout(playNote, nextDelay);
+    }
+
+    // 500ms 后开始播放第一个音符
+    schedulerTimer = setTimeout(playNote, 500);
+
+    musicNodes = { analyser, noiseSrc, noiseGain, delay, schedulerTimer, activeOscs };
+    startVisualizer();
+  }
+
+  function stopLightMusic() {
+    if (!musicNodes) return;
+    const ctx = audioCtx;
+
+    // 停止可视化
+    stopVisualizer();
+
+    // 停止音符调度
+    if (musicNodes.schedulerTimer) clearTimeout(musicNodes.schedulerTimer);
+
+    // 白噪声淡出
+    const ng = musicNodes.noiseGain;
+    ng.gain.cancelScheduledValues(ctx.currentTime);
+    ng.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.8);
+
+    // 延迟后停止噪声源
+    const ns = musicNodes.noiseSrc;
+    setTimeout(function () {
+      try { ns.stop(); } catch (e) {}
+    }, 900);
+
+    // 停止所有活跃振荡器
+    musicNodes.activeOscs.forEach(function (osc) {
+      try { osc.stop(); } catch (e) {}
+    });
+
+    musicNodes = null;
+  }
+
+  /* ============ 可视化 ============ */
+  function startVisualizer() {
+    if (vizRaf) cancelAnimationFrame(vizRaf);
+    elViz.classList.add("show");
+
+    var c2d = elViz.getContext("2d");
+    var bins = musicNodes.analyser.frequencyBinCount;
+    var data = new Uint8Array(bins);
+    var barCount = 28;
+    var W = elViz.width;
+    var H = elViz.height;
+    var barW = W / barCount;
+    var gap = barW * 0.25;
+    var drawW = barW - gap;
+
+    function draw() {
+      if (!musicNodes || !musicNodes.analyser) return;
+      musicNodes.analyser.getByteFrequencyData(data);
+
+      c2d.clearRect(0, 0, W, H);
+
+      var isDone = document.body.classList.contains("done");
+      var color = isDone ? "#6baf5e" : "#e8554e";
+
+      for (var i = 0; i < barCount; i++) {
+        var idx = Math.floor(i * bins / barCount);
+        var val = data[idx] / 255;
+        var bh = Math.max(2, val * H * 0.92);
+        var x = i * barW + gap / 2;
+        var y = H - bh;
+
+        // 渐变：底部深色 → 顶部浅色
+        var grad = c2d.createLinearGradient(0, H, 0, y);
+        grad.addColorStop(0, color);
+        grad.addColorStop(1, isDone ? "#a8d8a0" : "#f4a39e");
+        c2d.fillStyle = grad;
+
+        // 圆角顶部
+        var r = Math.min(drawW / 2, 4);
+        c2d.beginPath();
+        c2d.moveTo(x, H);
+        c2d.lineTo(x, y + r);
+        c2d.quadraticCurveTo(x, y, x + r, y);
+        c2d.lineTo(x + drawW - r, y);
+        c2d.quadraticCurveTo(x + drawW, y, x + drawW, y + r);
+        c2d.lineTo(x + drawW, H);
+        c2d.closePath();
+        c2d.fill();
+      }
+
+      vizRaf = requestAnimationFrame(draw);
+    }
+
+    draw();
+  }
+
+  function stopVisualizer() {
+    if (vizRaf) {
+      cancelAnimationFrame(vizRaf);
+      vizRaf = null;
+    }
+    elViz.classList.remove("show");
+    var c2d = elViz.getContext("2d");
+    c2d.clearRect(0, 0, elViz.width, elViz.height);
+  }
+
+  /* ============ Web Audio: 完成提示音（钟声）============ */
+  function playBell() {
+    const ctx = ensureAudioCtx();
+    const now = ctx.currentTime;
+
+    // A4=440, C#5=554.37, E5=659.25  → A 大三和弦，柔和悦耳
+    const freqs   = [880, 1108.73, 1318.51];
+    const dur     = 3.0;
+
+    freqs.forEach(function (f, idx) {
+      const osc  = ctx.createOscillator();
+      osc.type   = "sine";
+      osc.frequency.value = f;
+
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, now + idx * 0.15);
+      g.gain.linearRampToValueAtTime(0.25 / (idx + 1), now + idx * 0.15 + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.15 + dur);
+
+      osc.connect(g);
+      g.connect(ctx.destination);
+      osc.start(now + idx * 0.15);
+      osc.stop(now + idx * 0.15 + dur + 0.1);
+    });
+  }
+
+  /* ============ 倒计时逻辑 ============ */
+  function fmt(sec) {
+    sec = Math.max(0, Math.ceil(sec));
+    var m = Math.floor(sec / 60);
+    var s = sec % 60;
+    return (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+  }
+
+  function updateRing(sec) {
+    var pct = sec / TOTAL_SECONDS;
+    elRing.style.strokeDashoffset = String(RING_CIRC * (1 - pct));
+  }
+
+  function render() {
+    elTime.textContent = fmt(remaining);
+    updateRing(remaining);
+  }
+
+  function tick() {
+    if (!running) return;
+    var now = Date.now();
+    var elapsed = (now - startEpoch) / 1000;
+    remaining = Math.max(0, pauseStamp - elapsed);
+
+    render();
+
+    if (remaining <= 0) {
+      finish();
+    } else {
+      rafId = requestAnimationFrame(tick);
+    }
+  }
+
+  function start() {
+    if (running) return;
+    running = true;
+    startEpoch = Date.now();
+    pauseStamp = remaining;
+    // 全新开始（非暂停后继续）时记录起始时间
+    if (remaining >= TOTAL_SECONDS) {
+      sessionStartISO = new Date().toISOString();
+    }
+    elStart.textContent = "暂停";
+    elLabel.textContent = "专注中…";
+    document.body.classList.remove("done");
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function pause() {
+    if (!running) return;
+    running = false;
+    cancelAnimationFrame(rafId);
+    elStart.textContent = "继续";
+    elLabel.textContent = "已暂停";
+  }
+
+  function reset() {
+    running = false;
+    cancelAnimationFrame(rafId);
+    elModal.classList.remove("show");
+    remaining = TOTAL_SECONDS;
+    sessionStartISO = null;
+    elStart.textContent = "开始";
+    elLabel.textContent = "点击开始专注";
+    document.body.classList.remove("done");
+    render();
+  }
+
+  function finish() {
+    running = false;
+    cancelAnimationFrame(rafId);
+    remaining = 0;
+    render();
+    elStart.textContent = "开始";
+    elLabel.textContent = "时间到！";
+    document.body.classList.add("done");
+    playBell();
+    // 弹窗询问 + 等待用户确认后再记录
+    var durMin = Math.round(TOTAL_SECONDS / 60);
+    elModalDur.textContent = "本次专注 " + durMin + " 分钟";
+    elModal.classList.add("show");
+  }
+
+  /* ============ 专注记录 (localStorage) ============ */
+  var LOG_KEY = "pomodoro_focus_log";
+
+  function loadLog() {
+    try {
+      var raw = localStorage.getItem(LOG_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) { return []; }
+  }
+
+  function saveLog(log) {
+    try { localStorage.setItem(LOG_KEY, JSON.stringify(log)); } catch (e) {}
+  }
+
+  function todayStr() {
+    var d = new Date();
+    return d.getFullYear() + "-" +
+      String(d.getMonth() + 1).padStart(2, "0") + "-" +
+      String(d.getDate()).padStart(2, "0");
+  }
+
+  function fmtClock(iso) {
+    var d = new Date(iso);
+    return String(d.getHours()).padStart(2, "0") + ":" +
+           String(d.getMinutes()).padStart(2, "0");
+  }
+
+  function renderStats() {
+    var log = loadLog();
+    var today = todayStr();
+    var entries = log.filter(function (e) {
+      return e.start && e.start.slice(0, 10) === today;
+    });
+
+    var totalSec = entries.reduce(function (s, e) { return s + e.duration; }, 0);
+    var totalMin = Math.round(totalSec / 60);
+    var done = entries.filter(function (e) { return e.completed; }).length;
+    var undone = entries.length - done;
+
+    elStatTotal.textContent = totalMin + "min";
+    elStatDone.textContent = String(done);
+    elStatIncomplete.textContent = String(undone);
+    sessions = entries.length;
+    elCount.textContent = String(sessions);
+
+    renderLog(entries);
+  }
+
+  function renderLog(entries) {
+    if (!entries.length) {
+      elLogList.innerHTML =
+        '<div class="log-item" style="justify-content:center;color:#c0b8ae;">暂无记录</div>';
+      return;
+    }
+    var html = "";
+    entries.slice().reverse().forEach(function (e) {
+      var durMin = Math.round(e.duration / 60);
+      var icon = e.completed ? "✅" : "⏳";
+      html +=
+        '<div class="log-item">' +
+          '<span class="log-status">' + icon + '</span>' +
+          '<span class="log-time">' + fmtClock(e.start) + ' 开始</span>' +
+          '<span class="log-dur">' + durMin + 'min</span>' +
+        '</div>';
+    });
+    elLogList.innerHTML = html;
+  }
+
+  function recordSession(completed) {
+    var entry = {
+      start: sessionStartISO || new Date().toISOString(),
+      end: new Date().toISOString(),
+      duration: TOTAL_SECONDS,
+      completed: completed
+    };
+    var log = loadLog();
+    log.push(entry);
+    saveLog(log);
+
+    // 重置计时器到 25:00
+    remaining = TOTAL_SECONDS;
+    updateRing(TOTAL_SECONDS);
+    elTime.textContent = fmt(TOTAL_SECONDS);
+    elLabel.textContent = completed ? "做得好！再来一个？" : "没关系，继续加油！";
+
+    renderStats();
+  }
+
+  /* ============ 事件绑定 ============ */
+  elStart.addEventListener("click", function () {
+    // 首次交互时初始化 AudioContext（浏览器策略）
+    ensureAudioCtx();
+    if (running) {
+      pause();
+    } else {
+      start();
+    }
+  });
+
+  elReset.addEventListener("click", reset);
+
+  // 背景音模式切换
+  elSoundOpts.addEventListener("click", function (e) {
+    var btn = e.target.closest(".sound-opt");
+    if (!btn) return;
+    var mode = btn.dataset.mode;
+    if (mode === soundMode) return;
+
+    // 停止当前模式
+    stopLightMusic();
+
+    // 更新 UI
+    elSoundOpts.querySelectorAll(".sound-opt").forEach(function (b) {
+      b.classList.toggle("active", b === btn);
+    });
+
+    soundMode = mode;
+
+    // 启动新模式
+    if (mode !== "off") {
+      ensureAudioCtx();
+      if (mode === "music") startLightMusic();
+    }
+  });
+
+  // 弹窗按钮：记录专注时长
+  elModalYes.addEventListener("click", function () {
+    elModal.classList.remove("show");
+    recordSession(true);
+  });
+  elModalNo.addEventListener("click", function () {
+    elModal.classList.remove("show");
+    recordSession(false);
+  });
+
+  // 专注记录展开/折叠
+  var logOpen = false;
+  elLogToggle.addEventListener("click", function () {
+    logOpen = !logOpen;
+    elLogList.classList.toggle("open", logOpen);
+    elLogToggle.textContent = logOpen ? "收起专注记录 ▴" : "查看专注记录 ▾";
+  });
+
+  /* ============ 键盘快捷键 ============ */
+  document.addEventListener("keydown", function (e) {
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    // 弹窗打开时只响应弹窗按钮快捷键
+    if (elModal.classList.contains("show")) {
+      if (e.code === "Enter" || e.code === "KeyY") { e.preventDefault(); elModalYes.click(); }
+      else if (e.code === "KeyN") { e.preventDefault(); elModalNo.click(); }
+      return;
+    }
+    if (e.code === "Space") {
+      e.preventDefault();
+      elStart.click();
+    } else if (e.code === "KeyR") {
+      elReset.click();
+    }
+  });
+
+  /* ============ 初始化 ============ */
+  render();
+  renderStats();
+})();
+</script>
+</body>
+</html>
